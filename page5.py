@@ -1,13 +1,12 @@
-import os
+import streamlit as st
+import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-import tempfile
-import webbrowser
+import time
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-import time
+
 
 # Scraping function for Port Authority Construction Opportunities using Selenium
 def fetch_table_port_authority():
@@ -39,7 +38,7 @@ def fetch_table_port_authority():
         "Others"
     ]
 
-    all_tables_html = ""
+    all_tables = []
     table_counter = 0
 
     # Process each table
@@ -82,82 +81,50 @@ def fetch_table_port_authority():
                 cells.insert(0, full_description)  # Insert the full description at the beginning
                 rows.append(cells)
 
-            # Create a DataFrame
+            # Create a DataFrame for the current table
             df = pd.DataFrame(rows, columns=headers)
-
-            # Convert DataFrame to HTML
-            table_html = df.to_html(index=False, escape=False, classes='styled-table', table_id=f'table_{table_counter}')
-
-            # Add a title for the table
-            table_name = table_names[table_counter]
-            all_tables_html += f"<h2>{table_name}</h2>"
-            all_tables_html += table_html
-
+            all_tables.append((table_names[table_counter], df))
             table_counter += 1
 
-    # Generate HTML with CSS styling and JavaScript for the text filter
-    html_output = f"""
-    <html>
-    <head>
-        <style>
-            .styled-table {{
-                border-collapse: collapse;
-                margin: 25px 0;
-                font-size: 0.9em;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                width: 100%;
-                box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
-            }}
-            .styled-table thead tr {{
-                background-color: #009879;
-                color: #ffffff;
-                text-align: left;
-            }}
-            .styled-table th, .styled-table td {{
-                padding: 12px 15px;
-            }}
-            .styled-table tbody tr {{
-                border-bottom: 1px solid #dddddd;
-            }}
-            .styled-table tbody tr:nth-of-type(even) {{
-                background-color: #f3f3f3;
-            }}
-            .styled-table tbody tr:last-of-type {{
-                border-bottom: 2px solid #009879;
-            }}
-            .filter-input {{
-                margin-bottom: 20px;
-                padding: 10px;
-                font-size: 1em;
-                width: 100%;
-                box-sizing: border-box;
-            }}
-        </style>
-        <script>
-            function filterTable(event) {{
-                const filter = event.target.value.toLowerCase();
-                const tables = document.querySelectorAll('.styled-table tbody tr');
-                tables.forEach(row => {{
-                    const text = row.innerText.toLowerCase();
-                    row.style.display = text.includes(filter) ? '' : 'none';
-                }});
-            }}
-        </script>
-    </head>
-    <body>
-        <h1>Construction Opportunities</h1>
-        <input type="text" class="filter-input" placeholder="Type to filter..." onkeyup="filterTable(event)">
-        {all_tables_html}
-    </body>
-    </html>
+    return all_tables
+
+# Function to show the page in Streamlit
+def show_page():
+    # Embedded hyperlink in the title
+    title_html = """
+    <h2><a href='https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/Construction.html' 
+    target='_blank'>Port Authority Construction Opportunities</a></h2>
     """
+    st.markdown(title_html, unsafe_allow_html=True)
 
-    # Use a temporary directory for the HTML output
-    temp_dir = tempfile.mkdtemp()
-    output_file = os.path.join(temp_dir, 'output_tables_with_links.html')
-    
-    with open(output_file, 'w') as file:
-        file.write(html_output)
+    # Check if the user has clicked the scrape button
+    if st.button("Scrape Port Authority Construction Opportunities"):
+        all_tables = fetch_table_port_authority()
+        st.session_state["scraped_tables"] = all_tables  # Store the scraped tables in session state
+        st.success("Scraping completed! Now you can filter the tables.")
 
-    print(f"Tables extracted and saved as '{output_file}'.")
-    webbrowser.open(output_file)
+    # If the tables have been scraped, display them with a search filter
+    if "scraped_tables" in st.session_state:
+        all_tables = st.session_state["scraped_tables"]
+
+        # Text input for keyword filter
+        filter_keyword = st.text_input("Filter for relevant keywords:", "")
+
+        # Display each table
+        for table_name, df in all_tables:
+            st.markdown(f"### {table_name}")
+
+            # Filter the DataFrame if a keyword is entered
+            if filter_keyword:
+                df_filtered = df[df.apply(lambda row: row.astype(str).str.contains(filter_keyword, case=False).any(), axis=1)]
+            else:
+                df_filtered = df
+
+            # Convert filtered DataFrame to HTML
+            table_html = df_filtered.to_html(index=False, escape=False)
+            st.markdown(table_html, unsafe_allow_html=True)
+
+    # Back to Home button
+    if st.button("Back to Home"):
+        st.session_state['page'] = 'main'
+

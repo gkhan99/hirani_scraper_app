@@ -1,22 +1,28 @@
+import streamlit as st
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-import tempfile
-import os
-import webbrowser
+from datetime import datetime
+
 
 # Scraping function for NYS DOT Designation
 def scrape_nys_dot_designation():
     url = 'https://www.dot.ny.gov/doing-business/opportunities/eng-designation'
-    response = requests.get(url)
-    html_content = response.content
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+        html_content = response.content
+        soup = BeautifulSoup(html_content, 'html.parser')
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error fetching the webpage: {e}")
+        return
 
-    soup = BeautifulSoup(html_content, 'html.parser')
-    main_table = soup.find('table', {'id': 'rg151694'})
-
+    # Initialize lists to store scraped data
     dates = []
     descriptions = []
 
+    # Find the main table
+    main_table = soup.find('table', {'id': 'rg151694'})
     inner_tables = main_table.find_all('table', class_='bcbanregion1')
 
     for inner_table in inner_tables:
@@ -36,7 +42,7 @@ def scrape_nys_dot_designation():
                     
                     soup_desc = BeautifulSoup(description, 'html.parser')
                     for strong_tag in soup_desc.find_all('strong'):
-                        strong_tag.decompose()
+                        strong_tag.decompose()  # Remove <strong> tags
                     
                     description = soup_desc.get_text(strip=True)
                     description = description.replace('class="bcbanregion2">', '').strip()
@@ -44,97 +50,30 @@ def scrape_nys_dot_designation():
                     dates.append(date)
                     descriptions.append(description)
 
+    # Create a DataFrame
     df = pd.DataFrame({
         'Date': dates,
         'Description': descriptions
     })
 
+    # Sort the DataFrame by date
     df['Date'] = pd.to_datetime(df['Date'])
     df.sort_values(by='Date', ascending=False, inplace=True)
 
-    html_template = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Engineering Opportunities Designation</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                margin: 20px;
-            }
-            h1 {
-                background-color: #f2f2f2;
-                padding: 10px;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                text-align: left;
-            }
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 20px;
-            }
-            th, td {
-                border: 1px solid #ddd;
-                padding: 8px;
-                text-align: left;
-            }
-            th {
-                background-color: #f2f2f2;
-            }
-            tr:nth-child(even) {
-                background-color: #f9f9f9;
-            }
-            #opportunities th:first-child, #opportunities td:first-child {
-                width: 150px;
-            }
-            .link-button {
-                display: inline-block;
-                padding: 10px 20px;
-                font-size: 16px;
-                color: white;
-                background-color: #007acc;
-                text-align: center;
-                text-decoration: none;
-                border-radius: 5px;
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                z-index: 1000;
-            }
-            .link-button:hover {
-                background-color: #005f99;
-            }
-        </style>
-        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.3/css/jquery.dataTables.css">
-        <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.5.1.js"></script>
-        <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.3/js/jquery.dataTables.js"></script>
-        <script>
-            $(document).ready(function() {
-                $('#opportunities').DataTable({
-                    "order": [[ 0, "desc" ]],
-                    "pageLength": 25
-                });
-            });
-        </script>
-    </head>
-    <body>
-        <a href="https://www.dot.ny.gov/doing-business/opportunities/eng-designation" class="link-button" target="_blank">Website</a>
-        <h1>Engineering Opportunities Designation</h1>
-        {table}
-    </body>
-    </html>
+    # Display the DataFrame in Streamlit
+    st.markdown(df.to_html(escape=False, index=False), unsafe_allow_html=True)
+
+# Function to show the page
+def show_page():
+    # Embedded hyperlink in the title
+    title_html = """
+    <h2><a href='https://www.dot.ny.gov/doing-business/opportunities/eng-designation' 
+    target='_blank'>NYS DOT Designation</a></h2>
     """
+    st.markdown(title_html, unsafe_allow_html=True)
 
-    html_table = df.to_html(escape=False, index=False, table_id="opportunities")
-    html_output = html_template.replace("{table}", html_table)
-
-    # Use a temporary directory for the HTML output
-    temp_dir = tempfile.mkdtemp()
-    output_path = os.path.join(temp_dir, 'Engineering_Opportunities_Designation_2024.html')
+    if st.button("Scrape NYS DOT Designation"):
+        scrape_nys_dot_designation()
     
-    with open(output_path, 'w', encoding='utf-8') as file:
-        file.write(html_output)
-
-    print("HTML file with dates and descriptions for 2024 has been created successfully.")
-    webbrowser.open(output_path)
+    if st.button("Back to Home"):
+        st.session_state['page'] = 'main'
