@@ -5,22 +5,35 @@ from bs4 import BeautifulSoup
 import time
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+import os
+
+# Function to install Google Chrome and ChromeDriver
+def install_chrome_and_driver():
+    # Download Google Chrome
+    os.system("wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb")
+    os.system("apt-get update && apt-get install -y ./google-chrome-stable_current_amd64.deb")
+
+    # Download ChromeDriver
+    os.system("wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip")
+    os.system("unzip chromedriver_linux64.zip -d /usr/local/bin/")
+    os.system("chmod +x /usr/local/bin/chromedriver")
 
 # Scraping function for Port Authority Construction Opportunities using Selenium
 def fetch_table_port_authority():
-    # Set up Selenium WebDriver with headless mode and correct paths
+    # Install Chrome and ChromeDriver
+    install_chrome_and_driver()
+
+    # Set up Selenium WebDriver with headless mode
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Headless mode for running without GUI
+    chrome_options.add_argument("--headless")  # Run Chrome in headless mode
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.binary_location = "/usr/bin/chromium-browser"  # Set binary location for Chromium
+    chrome_options.binary_location = "/usr/bin/google-chrome"  # Path to Google Chrome
 
     # Initialize WebDriver
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    driver = webdriver.Chrome(service=Service("/usr/local/bin/chromedriver"), options=chrome_options)
 
     # Go to the URL
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/Construction.html'
