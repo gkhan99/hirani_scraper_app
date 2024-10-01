@@ -1,7 +1,10 @@
 import streamlit as st
+import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-import httpx
+
+# Set full screen mode
+st.set_page_config(layout="wide")
 
 # Embed the website link in the title
 st.markdown(
@@ -16,44 +19,44 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Async function using httpx for scraping
-async def scrape_port_authority_professional_services():
+# Synchronous scraping function using requests
+def scrape_port_authority_professional_services():
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html'
     
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Find the first table in the webpage
-            table = soup.find('table')
-            if not table:
-                st.error("No table found on the page.")
-                return None
+        # Make synchronous request to the webpage
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Extract table headers and rows for DataFrame
-            headers = [th.get_text(strip=True) for th in table.find_all('th')]
-            rows = []
-            for tr in table.find_all('tr')[1:]:
-                cells = [td.get_text(strip=True) if not td.find('a') else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>' for td in tr.find_all('td')]
-                rows.append(cells)
+        # Find the first table in the webpage
+        table = soup.find('table')
+        if not table:
+            st.error("No table found on the page.")
+            return None
 
-            # Create DataFrame
-            df = pd.DataFrame(rows, columns=headers)
-            return df
+        # Extract table headers and rows for DataFrame
+        headers = [th.get_text(strip=True) for th in table.find_all('th')]
+        rows = []
+        for tr in table.find_all('tr')[1:]:
+            cells = [td.get_text(strip=True) if not td.find('a') else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>' for td in tr.find_all('td')]
+            rows.append(cells)
 
-    except httpx.RequestError as e:
-        st.error(f"Error fetching webpage: {e}")
+        # Create DataFrame
+        df = pd.DataFrame(rows, columns=headers)
+        return df
+
+    except requests.RequestException as e:
+        st.error(f"Error fetching the webpage: {e}")
         return None
 
-# Streamlit Page
-async def show_page():
-    # Scrape when button is clicked
+# Streamlit page function
+def show_page():
+    # Scrape the data when the button is clicked
     if st.button("Scrape Port Authority Professional Services"):
-        df = await scrape_port_authority_professional_services()
+        df = scrape_port_authority_professional_services()
         if df is not None:
-            st.session_state["scraped_table"] = df
+            st.session_state["scraped_table"] = df  # Store the scraped table in session state
             st.success("Scraping completed! Now you can filter the table.")
 
     # Check if data is available in session state
@@ -87,7 +90,6 @@ async def show_page():
     if st.button("Back to Home"):
         st.session_state['page'] = 'main'
 
-
-# Entry point
+# Entry point for the page
 if __name__ == "__main__":
     show_page()
