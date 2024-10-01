@@ -7,7 +7,7 @@ import httpx
 API_KEY = st.secrets["SCRAPER_API_KEY"]
 
 # Scraping function using ScraperAPI for PASSPort Construction Opportunities
-async def fetch_passport_data_scraperapi(max_pages=6):
+def fetch_passport_data_scraperapi(max_pages=6):
     url = 'https://passport.cityofnewyork.us/page.aspx/en/rfp/request_browse_public'
     api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
 
@@ -16,12 +16,11 @@ async def fetch_passport_data_scraperapi(max_pages=6):
 
     page_number = 1
     while page_number <= max_pages:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(api_url)
-            if response.status_code != 200:
-                st.error(f"Failed to fetch page {page_number}.")
-                break
-            html_content = response.text
+        response = httpx.get(api_url)
+        if response.status_code != 200:
+            st.error(f"Failed to fetch page {page_number}.")
+            break
+        html_content = response.text
 
         # Parse the HTML content using BeautifulSoup
         soup = BeautifulSoup(html_content, 'html.parser')
@@ -87,7 +86,7 @@ def show_page():
 
     # Button to trigger scraping
     if st.button("Scrape NYC PASSPort"):
-        st.session_state.scraped_data = st.experimental_asyncio.run(fetch_passport_data_scraperapi())
+        st.session_state.scraped_data = fetch_passport_data_scraperapi()
         if st.session_state.scraped_data is not None:
             st.success("Data scraped successfully!")
 
