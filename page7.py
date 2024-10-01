@@ -1,56 +1,71 @@
 import streamlit as st
-import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
+import httpx
 
 # Retrieve the ScraperAPI Key from Streamlit secrets
 API_KEY = st.secrets["SCRAPER_API_KEY"]
 
-# Scraping function for PASSPort Construction Opportunities using ScraperAPI
-def fetch_passport_data_scraperapi():
-    url = "https://passport.cityofnewyork.us/page.aspx/en/rfp/request_browse_public"
-    api_url = f"http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true"
-    
-    try:
-        # Use requests to fetch data from ScraperAPI
-        response = requests.get(api_url)
-        
-        if response.status_code == 200:
+# Scraping function using ScraperAPI for PASSPort Construction Opportunities
+async def fetch_passport_data_scraperapi(max_pages=6):
+    url = 'https://passport.cityofnewyork.us/page.aspx/en/rfp/request_browse_public'
+    api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
+
+    all_data = []
+    titles = None
+
+    page_number = 1
+    while page_number <= max_pages:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(api_url)
+            if response.status_code != 200:
+                st.error(f"Failed to fetch page {page_number}.")
+                break
             html_content = response.text
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
-            # Find the table in the webpage
-            table = soup.find("table", class_="iv-grid-view")
-            if not table:
-                st.error("No table found on the page.")
-                return None
 
-            # Ensure all links are absolute by converting relative URLs
-            for a in table.find_all('a', href=True):
-                a['href'] = urljoin(url, a['href'])
+        # Parse the HTML content using BeautifulSoup
+        soup = BeautifulSoup(html_content, 'html.parser')
+        page_titles, page_data = parse_table(soup)
 
-            # Extract table headers and rows for DataFrame
-            headers = [th.get_text(strip=True) for th in table.find_all('th')]
-            rows = []
-            for tr in table.find_all('tr')[1:]:
-                cells = [
-                    td.get_text(strip=True) if not td.find('a') 
-                    else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>'
-                    for td in tr.find_all('td')
-                ]
-                rows.append(cells)
-
-            # Create DataFrame
-            df = pd.DataFrame(rows, columns=headers)
-            return df
+        if page_data:
+            if not titles:
+                titles = page_titles
+            all_data.extend(page_data)
+            page_number += 1
         else:
-            st.error(f"Failed to scrape the page. Status code: {response.status_code}")
-            return None
+            break
 
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
-        return None
+    # Convert data to a pandas DataFrame
+    if titles and all_data:
+        df = pd.DataFrame(all_data, columns=titles)
+        return df
+    return None
+
+# HTML parser function using BeautifulSoup
+def parse_table(soup):
+    table = soup.find("table", class_="iv-grid-view")
+
+    if table:
+        headers = table.find_all('th')
+        titles = [header.text.strip() for header in headers]
+        rows = table.find_all('tr', {'data-id': True})  # Get rows with data-id attribute
+        page_data = []
+        for row in rows:
+            data = row.find_all('td')
+            row_data = []
+            for i, td in enumerate(data):
+                # Extract the onclick link from 'Procurement Name' and embed it as a clickable link
+                if i == 3 and 'onclick' in str(td):
+                    link = td.find('button')['onclick'].split("'")[1]
+                    full_link = f"https://passport.cityofnewyork.us{link}"
+                    # Embed the link in the Procurement Name text as a clickable link
+                    row_data.append(f'<a href="{full_link}" target="_blank">{td.text.strip()}</a>')
+                else:
+                    row_data.append(td.text.strip().replace('Edit', '').strip())
+            page_data.append(row_data)
+        return titles, page_data
+    else:
+        return None, None
 
 # Function to show the page in Streamlit
 def show_page():
@@ -66,20 +81,21 @@ def show_page():
         unsafe_allow_html=True
     )
 
-    # Scrape the data when the button is clicked
-    if st.button("Scrape PASSPort Construction Opportunities"):
-        df = fetch_passport_data_scraperapi()  # Synchronous scraping call
-        if df is not None:
-            st.session_state["scraped_table"] = df  # Store the scraped table in session state
-            st.success("Scraping completed! Now you can filter the table.")
+    # Initialize session state for persistent data
+    if 'scraped_data' not in st.session_state:
+        st.session_state.scraped_data = None
 
-    # Check if data is available in session state
-    if "scraped_table" in st.session_state:
-        df = st.session_state["scraped_table"]
+    # Button to trigger scraping
+    if st.button("Scrape NYC PASSPort"):
+        st.session_state.scraped_data = st.experimental_asyncio.run(fetch_passport_data_scraperapi())
+        if st.session_state.scraped_data is not None:
+            st.success("Data scraped successfully!")
 
+    # If data is scraped, display filters and the table
+    if st.session_state.scraped_data is not None:
         # Remove unwanted columns
         columns_to_drop = ["EPIN", "Release Date (Your Local Time)", "Remaining time", "Main Commodity"]
-        filtered_data = df.drop(columns=columns_to_drop, errors='ignore')
+        filtered_data = st.session_state.scraped_data.drop(columns=columns_to_drop, errors='ignore')
         
         # Filter by 'RFx Status' containing 'Released'
         if 'RFx Status' in filtered_data.columns:
@@ -119,7 +135,7 @@ def show_page():
         # Add serial numbers after filtering to avoid gaps
         filtered_data.insert(0, 'Serial Number', range(1, len(filtered_data) + 1))
         
-        # CSS to style the table
+        # Add CSS to style the table
         st.markdown("""
             <style>
             .full-width-table {
@@ -153,9 +169,11 @@ def show_page():
             </style>
         """, unsafe_allow_html=True)
 
-        # Display the filtered table in Streamlit with full-width and styled
+        # Display the dataframe in wide mode, with serial numbers and clickable links
         st.markdown(filtered_data.to_html(escape=False, index=False, classes='full-width-table'), unsafe_allow_html=True)
 
-    # Back to Home button
-    if st.button("Back to Home"):
-        st.session_state['page'] = 'main'
+        # Add "Back to Home" button
+        if st.button("Back to Home"):
+            st.session_state['page'] = 'main'
+    else:
+        st.write("Click the button to scrape data.")
