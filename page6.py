@@ -3,9 +3,6 @@ import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 
-# Set full screen mode
-st.set_page_config(layout="wide")
-
 # Embed the website link in the title
 st.markdown(
     """
