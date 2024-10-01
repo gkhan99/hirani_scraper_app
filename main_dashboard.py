@@ -115,7 +115,7 @@ def show_homepage():
             <div class="image-container">
                 <img src="data:image/png;base64,{port_authority_professional_services_image}" />
             </div>
-            <h3>Port Authority Professional Services</h3>
+            <h3>Port Authority Prof. Services</h3>
             """, unsafe_allow_html=True)
         if st.button("Port Authority Professional Services"):
             navigate_to('page6')
