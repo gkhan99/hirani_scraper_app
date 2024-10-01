@@ -3,48 +3,57 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+import tempfile
+import webbrowser
 
 # Retrieve the ScraperAPI Key from Streamlit secrets
 API_KEY = st.secrets["SCRAPER_API_KEY"]
 
-# Scraping function for Port Authority Professional Services using ScraperAPI
-def scrape_port_authority_professional_services():
+# Async scraping function for Port Authority Professional Services
+async def scrape_port_authority_professional_services():
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html'
     
     # Use ScraperAPI to get the fully rendered HTML of the page
     api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
     
-    response = requests.get(api_url)
-    
-    if response.status_code == 200:
-        html_content = response.text
-        soup = BeautifulSoup(html_content, 'html.parser')
+    try:
+        async with requests.AsyncClient() as client:
+            response = await client.get(api_url)
         
-        # Find the first table in the webpage
-        table = soup.find('table')
-        if not table:
-            st.error("No table found on the page.")
+        if response.status_code == 200:
+            html_content = response.text
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find the first table in the webpage
+            table = soup.find('table')
+            if not table:
+                st.error("No table found on the page.")
+                return None
+
+            # Ensure all links are absolute by converting relative URLs
+            for a in table.find_all('a', href=True):
+                a['href'] = urljoin(url, a['href'])
+
+            # Extract table headers and rows for DataFrame
+            headers = [th.get_text(strip=True) for th in table.find_all('th')]
+            rows = []
+            for tr in table.find_all('tr')[1:]:
+                cells = [
+                    td.get_text(strip=True) if not td.find('a') 
+                    else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>'
+                    for td in tr.find_all('td')
+                ]
+                rows.append(cells)
+
+            # Create DataFrame
+            df = pd.DataFrame(rows, columns=headers)
+            return df
+        else:
+            st.error(f"Failed to scrape the page. Status code: {response.status_code}")
             return None
 
-        # Ensure all links are absolute by converting relative URLs
-        for a in table.find_all('a', href=True):
-            a['href'] = urljoin(url, a['href'])
-
-        # Extract table headers and rows for DataFrame
-        headers = [th.get_text(strip=True) for th in table.find_all('th')]
-        rows = []
-        for tr in table.find_all('tr')[1:]:
-            cells = [
-                td.get_text(strip=True) if not td.find('a') else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>'
-                for td in tr.find_all('td')
-            ]
-            rows.append(cells)
-
-        # Create DataFrame
-        df = pd.DataFrame(rows, columns=headers)
-        return df
-    else:
-        st.error(f"Failed to scrape the page. Status code: {response.status_code}")
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
         return None
 
 # Function to show the page in Streamlit
@@ -58,7 +67,7 @@ def show_page():
 
     # Scrape the data when the button is clicked
     if st.button("Scrape Port Authority Professional Services"):
-        df = scrape_port_authority_professional_services()
+        df = st.experimental_asyncio.run(scrape_port_authority_professional_services())
         if df is not None:
             st.session_state["scraped_table"] = df  # Store the scraped table in session state
             st.success("Scraping completed! Now you can filter the table.")
@@ -76,7 +85,7 @@ def show_page():
         else:
             df_filtered = df
 
-        # Add CSS to make the table full-width and aligned to the left
+        # Add CSS to make the table full-width and styled
         st.markdown("""
             <style>
             .full-width-table {
@@ -96,6 +105,16 @@ def show_page():
             }
             .full-width-table tr:nth-child(even) {
                 background-color: #f2f2f2;
+            }
+            .full-width-table tr:hover {
+                background-color: #ddd;
+            }
+            a {
+                color: #4CAF50;
+                text-decoration: none;
+            }
+            a:hover {
+                text-decoration: underline;
             }
             </style>
         """, unsafe_allow_html=True)
