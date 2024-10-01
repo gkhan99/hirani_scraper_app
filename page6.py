@@ -1,7 +1,8 @@
 import streamlit as st
-import requests
 import pandas as pd
 from bs4 import BeautifulSoup
+import httpx
+
 
 # Embed the website link in the title
 st.markdown(
@@ -16,15 +17,17 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Synchronous scraping function using requests
+# Scraping function using httpx
 def scrape_port_authority_professional_services():
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html'
     
     try:
-        # Make synchronous request to the webpage
-        response = requests.get(url)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
+        # Make a synchronous request to the webpage using httpx
+        with httpx.Client(timeout=30) as client:
+            response = client.get(url)
+            response.raise_for_status()  # Check for HTTP errors
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
 
         # Find the first table in the webpage
         table = soup.find('table')
@@ -36,18 +39,23 @@ def scrape_port_authority_professional_services():
         headers = [th.get_text(strip=True) for th in table.find_all('th')]
         rows = []
         for tr in table.find_all('tr')[1:]:
-            cells = [td.get_text(strip=True) if not td.find('a') else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>' for td in tr.find_all('td')]
+            cells = [
+                td.get_text(strip=True) if not td.find('a') 
+                else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>' 
+                for td in tr.find_all('td')
+            ]
             rows.append(cells)
 
         # Create DataFrame
         df = pd.DataFrame(rows, columns=headers)
+
         return df
 
-    except requests.RequestException as e:
-        st.error(f"Error fetching the webpage: {e}")
+    except httpx.RequestError as e:
+        st.error(f"An error occurred while making the request: {e}")
         return None
 
-# Streamlit page function
+# Function to show the page in Streamlit
 def show_page():
     # Scrape the data when the button is clicked
     if st.button("Scrape Port Authority Professional Services"):
