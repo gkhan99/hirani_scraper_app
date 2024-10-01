@@ -1,14 +1,61 @@
 import streamlit as st
 import pandas as pd
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-import time
+import requests
+from urllib.parse import urljoin
 
-# Function to show the page for PASSPort Construction Opportunities
+# Retrieve the ScraperAPI Key from Streamlit secrets
+API_KEY = st.secrets["SCRAPER_API_KEY"]
+
+# Scraping function for PASSPort Construction Opportunities using ScraperAPI
+async def fetch_passport_data_scraperapi(max_pages=6):
+    url = "https://passport.cityofnewyork.us/page.aspx/en/rfp/request_browse_public"
+
+    api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
+    
+    try:
+        # Use HTTPX for async requests
+        async with requests.AsyncClient() as client:
+            response = await client.get(api_url)
+        
+        if response.status_code == 200:
+            html_content = response.text
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find the table in the webpage
+            table = soup.find("table", class_="iv-grid-view")
+            if not table:
+                st.error("No table found on the page.")
+                return None
+
+            # Ensure all links are absolute by converting relative URLs
+            for a in table.find_all('a', href=True):
+                a['href'] = urljoin(url, a['href'])
+
+            # Extract table headers and rows for DataFrame
+            headers = [th.get_text(strip=True) for th in table.find_all('th')]
+            rows = []
+            for tr in table.find_all('tr')[1:]:
+                cells = [
+                    td.get_text(strip=True) if not td.find('a') 
+                    else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>'
+                    for td in tr.find_all('td')
+                ]
+                rows.append(cells)
+
+            # Create DataFrame
+            df = pd.DataFrame(rows, columns=headers)
+            return df
+
+        else:
+            st.error(f"Failed to scrape the page. Status code: {response.status_code}")
+            return None
+
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+        return None
+
+# Function to show the page in Streamlit
 def show_page():
     # Embed the website link in the title
     st.markdown(
@@ -22,144 +69,63 @@ def show_page():
         unsafe_allow_html=True
     )
 
-    # Web scraping function using Selenium
-    def fetch_passport_data_selenium(max_pages=6):
-        # Set up Chrome options
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")  # Run in headless mode
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
+    # Scrape the data when the button is clicked
+    if st.button("Scrape PASSPort Construction Opportunities"):
+        df = st.experimental_asyncio.run(fetch_passport_data_scraperapi())
+        if df is not None:
+            st.session_state["scraped_table"] = df  # Store the scraped table in session state
+            st.success("Scraping completed! Now you can filter the table.")
 
-        # Initialize the driver
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-        url = "https://passport.cityofnewyork.us/page.aspx/en/rfp/request_browse_public"
-        driver.get(url)
-        
-        all_data = []
-        titles = None
-        
-        page_number = 1
-        while page_number <= max_pages:
-            time.sleep(5)  # Allow time for the page to load
-            
-            # Get the page content and parse it with BeautifulSoup
-            content = driver.page_source
-            page_titles, page_data = parse_table(content)
-            
-            if page_data:
-                if not titles:
-                    titles = page_titles
-                all_data.extend(page_data)
-                
-                # Click the next page button if available
-                try:
-                    next_button = driver.find_element(By.CSS_SELECTOR, "button[aria-label='Next page']")
-                    next_button.click()
-                    page_number += 1
-                except Exception as e:
-                    break
-            else:
-                break
-        
-        driver.quit()  # Close the browser once done
+    # Check if data is available in session state
+    if "scraped_table" in st.session_state:
+        df = st.session_state["scraped_table"]
 
-        # Convert data to a pandas DataFrame
-        if titles and all_data:
-            df = pd.DataFrame(all_data, columns=titles)
-            df = df.iloc[:, 1:]  # Drop the first column
-            
-            # Return the scraped DataFrame
-            return df
-        return None
+        # Text input for keyword filter
+        filter_keyword = st.text_input("Filter for relevant keywords:", "")
 
-    # HTML parser function using BeautifulSoup
-    def parse_table(html_content):
-        soup = BeautifulSoup(html_content, 'html.parser')
-        table = soup.find("table", class_="iv-grid-view")
-
-        if table:
-            headers = table.find_all('th')
-            titles = [header.text.strip() for header in headers]
-            rows = table.find_all('tr', {'data-id': True})  # Get rows with data-id attribute
-            page_data = []
-            for row in rows:
-                data = row.find_all('td')
-                row_data = []
-                for i, td in enumerate(data):
-                    # Extract the onclick link from 'Procurement Name' and embed it as a clickable link
-                    if i == 3 and 'onclick' in str(td):
-                        link = td.find('button')['onclick'].split("'")[1]
-                        full_link = f"https://passport.cityofnewyork.us{link}"
-                        # Embed the link in the Procurement Name text as a clickable link
-                        row_data.append(f'<a href="{full_link}" target="_blank">{td.text.strip()}</a>')
-                    else:
-                        row_data.append(td.text.strip().replace('Edit', '').strip())
-                page_data.append(row_data)
-            return titles, page_data
+        # Filter the DataFrame based on the keyword input
+        if filter_keyword:
+            df_filtered = df[df.apply(lambda row: row.astype(str).str.contains(filter_keyword, case=False).any(), axis=1)]
         else:
-            return None, None
+            df_filtered = df
 
-    # Initialize session state for persistent data
-    if 'scraped_data' not in st.session_state:
-        st.session_state.scraped_data = None
+        # CSS to style the table
+        st.markdown("""
+            <style>
+            .full-width-table {
+                width: 100%;
+                margin-left: 0;
+                margin-right: 0;
+                border-collapse: collapse;
+            }
+            .full-width-table th, .full-width-table td {
+                padding: 12px;
+                text-align: left;
+                border: 1px solid #ddd;
+            }
+            .full-width-table th {
+                background-color: #4CAF50;
+                color: white;
+            }
+            .full-width-table tr:nth-child(even) {
+                background-color: #f2f2f2;
+            }
+            .full-width-table tr:hover {
+                background-color: #ddd;
+            }
+            a {
+                color: #4CAF50;
+                text-decoration: none;
+            }
+            a:hover {
+                text-decoration: underline;
+            }
+            </style>
+        """, unsafe_allow_html=True)
 
-    # Button to trigger scraping
-    if st.button("Scrape NYC PASSPort"):
-        st.session_state.scraped_data = fetch_passport_data_selenium()
-        if st.session_state.scraped_data is not None:
-            st.write("Data scraped successfully!")
+        # Display the filtered table in Streamlit with full-width and styled
+        st.markdown(df_filtered.to_html(escape=False, index=False, classes='full-width-table'), unsafe_allow_html=True)
 
-    # If data is scraped, display filters and the table
-    if st.session_state.scraped_data is not None:
-        # Remove unwanted columns
-        columns_to_drop = ["EPIN", "Release Date (Your Local Time)", "Remaining time", "Main Commodity"]
-        filtered_data = st.session_state.scraped_data.drop(columns=columns_to_drop, errors='ignore')
-        
-        # Filter by 'RFx Status' containing 'Released'
-        if 'RFx Status' in filtered_data.columns:
-            filtered_data = filtered_data[filtered_data['RFx Status'].str.contains('Released', case=False)]
-        
-        # Filter to keep only specified industries
-        industries_to_keep = [
-            'Construction', 
-            'Professional Services', 
-            'Professional Services - Construction Related', 
-            'Professional Services - Architecture/Engineering', 
-            'Standard Services', 
-            'Standard Services - Construction Related'
-        ]
-        
-        if 'Industry' in filtered_data.columns:
-            filtered_data = filtered_data[filtered_data['Industry'].isin(industries_to_keep)]
-        
-        # Industry dropdown filter
-        selected_industry = st.selectbox(
-            "Filter by Industry",
-            options=["All"] + industries_to_keep,
-            index=0
-        )
-
-        # Keyword text filter
-        keyword_filter = st.text_input("Search by Keyword", "")
-
-        # Apply Industry filter if selected
-        if selected_industry != "All" and 'Industry' in filtered_data:
-            filtered_data = filtered_data[filtered_data['Industry'] == selected_industry]
-        
-        # Apply keyword search filter (case-insensitive)
-        if keyword_filter:
-            filtered_data = filtered_data[filtered_data.apply(lambda row: row.astype(str).str.contains(keyword_filter, case=False).any(), axis=1)]
-        
-        # Add serial numbers after filtering to avoid gaps
-        filtered_data.insert(0, 'Serial Number', range(1, len(filtered_data) + 1))
-        
-        st.write("Filtered Data:")
-
-        # Display the dataframe in wide mode, with serial numbers and clickable links
-        st.write(filtered_data.to_html(escape=False, index=False), unsafe_allow_html=True)  # Displaying as HTML for embedded links
-        
-        # Add "Back to Home" button
-        if st.button("Back to Home"):
-            st.session_state['page'] = 'main'
-    else:
-        st.write("Click the button to scrape data.")
+    # Back to Home button
+    if st.button("Back to Home"):
+        st.session_state['page'] = 'main'
