@@ -5,13 +5,22 @@ from bs4 import BeautifulSoup
 import time
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-
 
 # Scraping function for Port Authority Construction Opportunities using Selenium
 def fetch_table_port_authority():
-    # Set up Selenium WebDriver
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+    # Set up Selenium WebDriver with headless mode and correct paths
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # Headless mode for running without GUI
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.binary_location = "/usr/bin/chromium-browser"  # Set binary location for Chromium
+
+    # Initialize WebDriver
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
     # Go to the URL
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/Construction.html'
@@ -71,7 +80,7 @@ def fetch_table_port_authority():
                         cells.append("<br>".join(cell_content))
                     else:
                         cells.append(td.get_text(strip=True))
-                    
+
                     # If this is the third column, capture the text content before any <br> tag
                     if idx == 2:
                         first_paragraph = td.find('p')
@@ -127,4 +136,3 @@ def show_page():
     # Back to Home button
     if st.button("Back to Home"):
         st.session_state['page'] = 'main'
-
