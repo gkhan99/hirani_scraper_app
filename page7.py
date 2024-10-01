@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from bs4 import BeautifulSoup
-import httpx
+import requests
 
 # Retrieve the ScraperAPI Key from Streamlit secrets
 API_KEY = st.secrets["SCRAPER_API_KEY"]
@@ -16,7 +16,7 @@ def fetch_passport_data_scraperapi(max_pages=6):
 
     page_number = 1
     while page_number <= max_pages:
-        response = httpx.get(api_url)
+        response = requests.get(api_url)
         if response.status_code != 200:
             st.error(f"Failed to fetch page {page_number}.")
             break
