@@ -1,6 +1,6 @@
 import streamlit as st
-import requests
 import pandas as pd
+import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
@@ -81,8 +81,21 @@ def show_page():
             <style>
             .full-width-table {
                 width: 100%;
-                margin-left: 0;  /* Align the table to the left */
+                margin-left: 0;
                 margin-right: 0;
+                border-collapse: collapse;
+            }
+            .full-width-table th, .full-width-table td {
+                padding: 12px;
+                text-align: left;
+                border: 1px solid #ddd;
+            }
+            .full-width-table th {
+                background-color: #4CAF50;
+                color: white;
+            }
+            .full-width-table tr:nth-child(even) {
+                background-color: #f2f2f2;
             }
             </style>
         """, unsafe_allow_html=True)
