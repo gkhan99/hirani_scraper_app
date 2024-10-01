@@ -1,84 +1,86 @@
 import streamlit as st
-import requests
 import pandas as pd
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
-# Scraping function for Port Authority Construction Opportunities
+# Retrieve the ScraperAPI Key from Streamlit secrets
+API_KEY = st.secrets["SCRAPER_API_KEY"]
+
+# Scraping function for Port Authority Construction Opportunities using ScraperAPI
 def fetch_table_port_authority():
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/Construction.html'
+    
+    # Use ScraperAPI to get the fully rendered HTML of the page
+    api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
+    
+    response = requests.get(api_url)
+    
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-    # Send a GET request to fetch the HTML content
-    response = requests.get(url)
+        # Locate all table elements
+        table_containers = soup.find_all('div', {'class': 'Text med black'})
 
-    # Check if the request was successful
-    if response.status_code != 200:
-        st.error("Failed to fetch the webpage.")
+        table_names = [
+            "Solicitations/Advertisements",
+            "Catalog of Upcoming Procurements at John F. Kennedy (JFK) International Airport",
+            "RTQ (Request to Qualify)",
+            "VVP (Verification and Validation Process)",
+            "Others"
+        ]
+
+        all_tables = []
+        table_counter = 0
+
+        # Process each table
+        for container in table_containers:
+            tables = container.find_all('table')
+            for table in tables:
+                if table is None or table_counter >= len(table_names):
+                    continue
+
+                # Extract table headers
+                headers = ['Full Description']
+                for th in table.find_all('th'):
+                    headers.append(th.get_text(strip=True))
+
+                # Extract table rows
+                rows = []
+                base_url = 'https://panynj.gov'
+                for tr in table.find_all('tr')[1:]:  # Skip the header row
+                    cells = []
+                    full_description = ''
+                    for idx, td in enumerate(tr.find_all('td')):
+                        cell_content = []
+                        # Extract the text content and handle <a> tags
+                        if td.find('a'):
+                            for a in td.find_all('a'):
+                                href = a['href']
+                                if not href.startswith('http'):
+                                    href = urljoin(base_url, href)
+                                cell_content.append(f'<a href="{href}" target="_blank">{a.get_text(strip=True)}</a>')
+                            cells.append("<br>".join(cell_content))
+                        else:
+                            cells.append(td.get_text(strip=True))
+
+                        # If this is the third column, capture the text content before any <br> tag
+                        if idx == 2:
+                            first_paragraph = td.find('p')
+                            if first_paragraph and first_paragraph.contents:
+                                full_description = str(first_paragraph.contents[0]).strip()
+
+                    cells.insert(0, full_description)  # Insert the full description at the beginning
+                    rows.append(cells)
+
+                # Create a DataFrame for the current table
+                df = pd.DataFrame(rows, columns=headers)
+                all_tables.append((table_names[table_counter], df))
+                table_counter += 1
+
+        return all_tables
+    else:
+        st.error(f"Failed to scrape the page. Status code: {response.status_code}")
         return []
-
-    # Parse the HTML content using BeautifulSoup
-    soup = BeautifulSoup(response.content, 'html.parser')
-
-    # Locate all table elements
-    table_containers = soup.find_all('div', {'class': 'Text med black'})
-
-    table_names = [
-        "Solicitations/Advertisements",
-        "Catalog of Upcoming Procurements at John F. Kennedy (JFK) International Airport",
-        "RTQ (Request to Qualify)",
-        "VVP (Verification and Validation Process)",
-        "Others"
-    ]
-
-    all_tables = []
-    table_counter = 0
-
-    # Process each table
-    for container in table_containers:
-        tables = container.find_all('table')
-        for table in tables:
-            if table is None or table_counter >= len(table_names):
-                continue
-
-            # Extract table headers
-            headers = ['Full Description']
-            for th in table.find_all('th'):
-                headers.append(th.get_text(strip=True))
-
-            # Extract table rows
-            rows = []
-            base_url = 'https://panynj.gov'
-            for tr in table.find_all('tr')[1:]:  # Skip the header row
-                cells = []
-                full_description = ''
-                for idx, td in enumerate(tr.find_all('td')):
-                    cell_content = []
-                    # Extract the text content and handle <a> tags
-                    if td.find('a'):
-                        for a in td.find_all('a'):
-                            href = a['href']
-                            if not href.startswith('http'):
-                                href = base_url + href
-                            cell_content.append(f'<a href="{href}" target="_blank">{a.get_text(strip=True)}</a>')
-                        cells.append("<br>".join(cell_content))
-                    else:
-                        cells.append(td.get_text(strip=True))
-
-                    # If this is the third column, capture the text content before any <br> tag
-                    if idx == 2:
-                        first_paragraph = td.find('p')
-                        if first_paragraph and first_paragraph.contents:
-                            full_description = str(first_paragraph.contents[0]).strip()
-
-                cells.insert(0, full_description)  # Insert the full description at the beginning
-                rows.append(cells)
-
-            # Create a DataFrame for the current table
-            df = pd.DataFrame(rows, columns=headers)
-            all_tables.append((table_names[table_counter], df))
-            table_counter += 1
-
-    return all_tables
-
 
 # Function to show the page in Streamlit
 def show_page():
