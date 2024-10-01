@@ -1,24 +1,21 @@
 import streamlit as st
-import pandas as pd
 import requests
+import pandas as pd
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-import tempfile
-import webbrowser
 
 # Retrieve the ScraperAPI Key from Streamlit secrets
 API_KEY = st.secrets["SCRAPER_API_KEY"]
 
-# Async scraping function for Port Authority Professional Services
-async def scrape_port_authority_professional_services():
+# Scraping function for Port Authority Professional Services using ScraperAPI (Synchronous)
+def scrape_port_authority_professional_services():
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html'
     
     # Use ScraperAPI to get the fully rendered HTML of the page
     api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
     
     try:
-        async with requests.AsyncClient() as client:
-            response = await client.get(api_url)
+        response = requests.get(api_url)
         
         if response.status_code == 200:
             html_content = response.text
@@ -67,7 +64,7 @@ def show_page():
 
     # Scrape the data when the button is clicked
     if st.button("Scrape Port Authority Professional Services"):
-        df = st.experimental_asyncio.run(scrape_port_authority_professional_services())
+        df = scrape_port_authority_professional_services()  # Synchronous scraping call
         if df is not None:
             st.session_state["scraped_table"] = df  # Store the scraped table in session state
             st.success("Scraping completed! Now you can filter the table.")
@@ -85,7 +82,7 @@ def show_page():
         else:
             df_filtered = df
 
-        # Add CSS to make the table full-width and styled
+        # Add CSS to make the table full-width and aligned to the left
         st.markdown("""
             <style>
             .full-width-table {
