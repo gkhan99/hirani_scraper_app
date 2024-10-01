@@ -1,62 +1,61 @@
 import streamlit as st
+import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-import httpx
+from urllib.parse import urljoin
 
+# Retrieve the ScraperAPI Key from Streamlit secrets
+API_KEY = st.secrets["SCRAPER_API_KEY"]
 
-# Embed the website link in the title
-st.markdown(
-    """
-    <h1 style="text-align: center;">
-        <a href="https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html" 
-        target="_blank" style="text-decoration:none; color:inherit;">
-            Port Authority Professional Services Opportunities
-        </a>
-    </h1>
-    """, 
-    unsafe_allow_html=True
-)
-
-# Scraping function using httpx
+# Scraping function for Port Authority Professional Services using ScraperAPI
 def scrape_port_authority_professional_services():
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html'
     
-    try:
-        # Make a synchronous request to the webpage using httpx
-        with httpx.Client(timeout=30) as client:
-            response = client.get(url)
-            response.raise_for_status()  # Check for HTTP errors
+    # Use ScraperAPI to get the fully rendered HTML of the page
+    api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
+    
+    response = requests.get(api_url)
+    
+    if response.status_code == 200:
+        html_content = response.text
+        soup = BeautifulSoup(html_content, 'html.parser')
         
-        soup = BeautifulSoup(response.text, 'html.parser')
-
         # Find the first table in the webpage
         table = soup.find('table')
         if not table:
             st.error("No table found on the page.")
             return None
 
+        # Ensure all links are absolute by converting relative URLs
+        for a in table.find_all('a', href=True):
+            a['href'] = urljoin(url, a['href'])
+
         # Extract table headers and rows for DataFrame
         headers = [th.get_text(strip=True) for th in table.find_all('th')]
         rows = []
         for tr in table.find_all('tr')[1:]:
             cells = [
-                td.get_text(strip=True) if not td.find('a') 
-                else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>' 
+                td.get_text(strip=True) if not td.find('a') else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>'
                 for td in tr.find_all('td')
             ]
             rows.append(cells)
 
         # Create DataFrame
         df = pd.DataFrame(rows, columns=headers)
-
         return df
-
-    except httpx.RequestError as e:
-        st.error(f"An error occurred while making the request: {e}")
+    else:
+        st.error(f"Failed to scrape the page. Status code: {response.status_code}")
         return None
 
 # Function to show the page in Streamlit
 def show_page():
+    # Embedded hyperlink in the title
+    title_html = """
+    <h2><a href='https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html' 
+    target='_blank'>Port Authority Professional Services Opportunities</a></h2>
+    """
+    st.markdown(title_html, unsafe_allow_html=True)
+
     # Scrape the data when the button is clicked
     if st.button("Scrape Port Authority Professional Services"):
         df = scrape_port_authority_professional_services()
@@ -94,7 +93,3 @@ def show_page():
     # Back to Home button
     if st.button("Back to Home"):
         st.session_state['page'] = 'main'
-
-# Entry point for the page
-if __name__ == "__main__":
-    show_page()
