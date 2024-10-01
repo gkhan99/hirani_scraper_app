@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
