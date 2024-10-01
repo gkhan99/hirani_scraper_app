@@ -1,6 +1,6 @@
 import streamlit as st
-import requests
 import pandas as pd
+import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
@@ -9,7 +9,6 @@ API_KEY = st.secrets["SCRAPER_API_KEY"]
 # Scraping function for Port Authority Construction Opportunities using ScraperAPI
 def fetch_table_port_authority():
     url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/Construction.html'
-    
     api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
     
     response = requests.get(api_url)
@@ -86,16 +85,18 @@ def show_page():
     if st.button("Scrape Port Authority Construction Opportunities"):
         all_tables = fetch_table_port_authority()
         st.session_state["scraped_tables"] = all_tables
-        st.success("Scraping completed! Now you can filter the tables.")
+        st.success("Scraping completed! Start typing to filter the tables.")
 
     if "scraped_tables" in st.session_state:
         all_tables = st.session_state["scraped_tables"]
 
+        # Text input for keyword filter (Dynamic filtering)
         filter_keyword = st.text_input("Filter for relevant keywords:", "")
 
         for table_name, df in all_tables:
             st.markdown(f"### {table_name}")
 
+            # Apply the filter as the user types
             if filter_keyword:
                 df_filtered = df[df.apply(lambda row: row.astype(str).str.contains(filter_keyword, case=False).any(), axis=1)]
             else:
@@ -136,7 +137,7 @@ def show_page():
                 </style>
             """, unsafe_allow_html=True)
 
-            # Display the styled table
+            # Display the filtered table dynamically
             table_html = df_filtered.to_html(index=False, escape=False, classes='styled-table')
             st.markdown(table_html, unsafe_allow_html=True)
 
