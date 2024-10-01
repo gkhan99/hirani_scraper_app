@@ -1,5 +1,6 @@
-streamlit==1.20.0
-beautifulsoup4==4.10.0
-pandas==1.5.0
-requests==2.26.0
-playwright==1.30.0
+streamlit
+beautifulsoup4
+pandas
+requests
+playwright
+greenlet

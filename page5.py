@@ -1,27 +1,22 @@
 import streamlit as st
+import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
 
-# Function to scrape data using Playwright
+# Scraping function for Port Authority Construction Opportunities
 def fetch_table_port_authority():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+    url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/Construction.html'
 
-        # Go to the URL
-        url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/Construction.html'
-        page.goto(url)
+    # Send a GET request to fetch the HTML content
+    response = requests.get(url)
 
-        # Wait for the table to load
-        page.wait_for_timeout(5000)
-
-        # Get the page content
-        content = page.content()
-        browser.close()
+    # Check if the request was successful
+    if response.status_code != 200:
+        st.error("Failed to fetch the webpage.")
+        return []
 
     # Parse the HTML content using BeautifulSoup
-    soup = BeautifulSoup(content, 'html.parser')
+    soup = BeautifulSoup(response.content, 'html.parser')
 
     # Locate all table elements
     table_containers = soup.find_all('div', {'class': 'Text med black'})

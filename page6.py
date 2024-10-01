@@ -1,28 +1,26 @@
 import streamlit as st
-import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-import time
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from urllib.parse import urljoin
+from playwright.sync_api import sync_playwright
 
-# Scraping function for Port Authority Professional Services using Selenium
+# Scraping function for Port Authority Professional Services using Playwright
 def scrape_port_authority_professional_services():
-    # Set up Selenium WebDriver
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+    with sync_playwright() as p:
+        # Launch the browser
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
 
-    # Go to the URL
-    url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html'
-    driver.get(url)
+        # Go to the URL
+        url = 'https://panynj.gov/port-authority/en/business-opportunities/solicitations-advertisements/professional-services.html'
+        page.goto(url)
 
-    # Wait for the table to load
-    time.sleep(5)
+        # Wait for the table to load
+        page.wait_for_timeout(5000)
 
-    # Get the page source and close the browser
-    content = driver.page_source
-    driver.quit()
+        # Get the page source
+        content = page.content()
+        browser.close()
 
     # Parse the HTML content with BeautifulSoup
     soup = BeautifulSoup(content, 'html.parser')
@@ -42,7 +40,10 @@ def scrape_port_authority_professional_services():
     headers = [th.get_text(strip=True) for th in table.find_all('th')]
     rows = []
     for tr in table.find_all('tr')[1:]:
-        cells = [td.get_text(strip=True) if not td.find('a') else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>' for td in tr.find_all('td')]
+        cells = [
+            td.get_text(strip=True) if not td.find('a') else f'<a href="{td.find("a")["href"]}" target="_blank">{td.get_text(strip=True)}</a>'
+            for td in tr.find_all('td')
+        ]
         rows.append(cells)
 
     # Create DataFrame
