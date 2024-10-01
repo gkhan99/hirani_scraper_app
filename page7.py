@@ -1,22 +1,20 @@
 import streamlit as st
+import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-import requests
 from urllib.parse import urljoin
 
 # Retrieve the ScraperAPI Key from Streamlit secrets
 API_KEY = st.secrets["SCRAPER_API_KEY"]
 
 # Scraping function for PASSPort Construction Opportunities using ScraperAPI
-async def fetch_passport_data_scraperapi(max_pages=6):
+def fetch_passport_data_scraperapi():
     url = "https://passport.cityofnewyork.us/page.aspx/en/rfp/request_browse_public"
-
-    api_url = f'http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true'
+    api_url = f"http://api.scraperapi.com?api_key={API_KEY}&url={url}&render=true"
     
     try:
-        # Use HTTPX for async requests
-        async with requests.AsyncClient() as client:
-            response = await client.get(api_url)
+        # Use requests to fetch data from ScraperAPI
+        response = requests.get(api_url)
         
         if response.status_code == 200:
             html_content = response.text
@@ -46,7 +44,6 @@ async def fetch_passport_data_scraperapi(max_pages=6):
             # Create DataFrame
             df = pd.DataFrame(rows, columns=headers)
             return df
-
         else:
             st.error(f"Failed to scrape the page. Status code: {response.status_code}")
             return None
@@ -71,7 +68,7 @@ def show_page():
 
     # Scrape the data when the button is clicked
     if st.button("Scrape PASSPort Construction Opportunities"):
-        df = st.experimental_asyncio.run(fetch_passport_data_scraperapi())
+        df = fetch_passport_data_scraperapi()  # Synchronous scraping call
         if df is not None:
             st.session_state["scraped_table"] = df  # Store the scraped table in session state
             st.success("Scraping completed! Now you can filter the table.")
