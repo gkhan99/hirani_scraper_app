@@ -1,6 +1,5 @@
 streamlit
+httpx
 beautifulsoup4
 pandas
-requests
-playwright
-greenlet
+streamlit
