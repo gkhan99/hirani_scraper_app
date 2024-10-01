@@ -77,15 +77,48 @@ def show_page():
     if "scraped_table" in st.session_state:
         df = st.session_state["scraped_table"]
 
-        # Text input for keyword filter
-        filter_keyword = st.text_input("Filter for relevant keywords:", "")
+        # Remove unwanted columns
+        columns_to_drop = ["EPIN", "Release Date (Your Local Time)", "Remaining time", "Main Commodity"]
+        filtered_data = df.drop(columns=columns_to_drop, errors='ignore')
+        
+        # Filter by 'RFx Status' containing 'Released'
+        if 'RFx Status' in filtered_data.columns:
+            filtered_data = filtered_data[filtered_data['RFx Status'].str.contains('Released', case=False)]
+        
+        # Filter to keep only specified industries
+        industries_to_keep = [
+            'Construction', 
+            'Professional Services', 
+            'Professional Services - Construction Related', 
+            'Professional Services - Architecture/Engineering', 
+            'Standard Services', 
+            'Standard Services - Construction Related'
+        ]
+        
+        if 'Industry' in filtered_data.columns:
+            filtered_data = filtered_data[filtered_data['Industry'].isin(industries_to_keep)]
+        
+        # Industry dropdown filter
+        selected_industry = st.selectbox(
+            "Filter by Industry",
+            options=["All"] + industries_to_keep,
+            index=0
+        )
 
-        # Filter the DataFrame based on the keyword input
-        if filter_keyword:
-            df_filtered = df[df.apply(lambda row: row.astype(str).str.contains(filter_keyword, case=False).any(), axis=1)]
-        else:
-            df_filtered = df
+        # Keyword text filter
+        keyword_filter = st.text_input("Search by Keyword", "")
 
+        # Apply Industry filter if selected
+        if selected_industry != "All" and 'Industry' in filtered_data:
+            filtered_data = filtered_data[filtered_data['Industry'] == selected_industry]
+        
+        # Apply keyword search filter (case-insensitive)
+        if keyword_filter:
+            filtered_data = filtered_data[filtered_data.apply(lambda row: row.astype(str).str.contains(keyword_filter, case=False).any(), axis=1)]
+        
+        # Add serial numbers after filtering to avoid gaps
+        filtered_data.insert(0, 'Serial Number', range(1, len(filtered_data) + 1))
+        
         # CSS to style the table
         st.markdown("""
             <style>
@@ -121,7 +154,7 @@ def show_page():
         """, unsafe_allow_html=True)
 
         # Display the filtered table in Streamlit with full-width and styled
-        st.markdown(df_filtered.to_html(escape=False, index=False, classes='full-width-table'), unsafe_allow_html=True)
+        st.markdown(filtered_data.to_html(escape=False, index=False, classes='full-width-table'), unsafe_allow_html=True)
 
     # Back to Home button
     if st.button("Back to Home"):
